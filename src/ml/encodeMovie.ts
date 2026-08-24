@@ -1,39 +1,43 @@
+import * as tf from '@tensorflow/tfjs'
 import type { Movie } from '../types/movie'
-import type { CatalogMeta } from '../types/catalogMeta'
-import { MAX_AGE, WEIGHTS, vectorDim } from './weights'
+import type { EncodingContext } from './context'
+import { WEIGHTS, normalize } from './weights'
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value))
+/** Mirrors exemplo-01's oneHotWeighted — a single active category, scaled. */
+function oneHotWeighted(index: number, length: number, weight: number): tf.Tensor1D {
+  return tf.oneHot(index, length).cast('float32').mul(weight) as tf.Tensor1D
 }
 
 /**
- * Encodes a movie into a fixed-length feature vector:
- * [releaseYear(1) | avgViewerAge(1) | genres multi-hot(G) | decade one-hot(D)]
- *
- * `avgViewerAgeForMovie` must be computed by the caller from the live users
- * array (see avgViewerAge.ts) — it is not a static movie property.
+ * Genres are multi-valued (unlike exemplo-01's single `category`), so this
+ * spreads `weight` evenly across every active genre slot — a movie tagged
+ * with 4 genres doesn't get 4x the "genre mass" of one tagged with 1.
  */
-export function encodeMovie(movie: Movie, avgViewerAgeForMovie: number, meta: CatalogMeta): Float32Array {
-  const vector = new Float32Array(vectorDim(meta))
+function multiHotWeighted(indices: number[], length: number, weight: number): tf.Tensor1D {
+  if (indices.length === 0) return tf.zeros([length])
+  const perGenreWeight = weight / indices.length
+  return tf.oneHot(tf.tensor1d(indices, 'int32'), length).sum(0).mul(perGenreWeight) as tf.Tensor1D
+}
 
-  const { releaseYearMin, releaseYearMax, genreVocabulary, decadeBuckets } = meta
-  const yearRange = releaseYearMax - releaseYearMin || 1
-  vector[0] = WEIGHTS.releaseYear * ((movie.releaseYear - releaseYearMin) / yearRange)
+/**
+ * Encodes a movie into a feature vector: [releaseYear | avgViewerAge | genres | decade].
+ * Mirrors exemplo-01's encodeProduct: [price | age | category | color].
+ */
+export function encodeMovie(movie: Movie, context: EncodingContext): tf.Tensor1D {
+  const { meta } = context
 
-  vector[1] = WEIGHTS.avgViewerAge * (clamp(avgViewerAgeForMovie, 0, MAX_AGE) / MAX_AGE)
+  const releaseYear = tf.tensor1d([
+    normalize(movie.releaseYear, meta.releaseYearMin, meta.releaseYearMax) * WEIGHTS.releaseYear,
+  ])
 
-  const genreOffset = 2
-  if (movie.genres.length > 0) {
-    const perGenreWeight = WEIGHTS.genres / movie.genres.length
-    for (const genre of movie.genres) {
-      const index = genreVocabulary.indexOf(genre)
-      if (index >= 0) vector[genreOffset + index] = perGenreWeight
-    }
-  }
+  const avgViewerAge = tf.tensor1d([(context.movieAvgAgeNorm.get(movie.id) ?? 0.5) * WEIGHTS.avgViewerAge])
 
-  const decadeOffset = genreOffset + genreVocabulary.length
-  const decadeIndex = decadeBuckets.indexOf(movie.decade)
-  if (decadeIndex >= 0) vector[decadeOffset + decadeIndex] = WEIGHTS.decade
+  const genreIndices = movie.genres
+    .map((genre) => context.genreIndex[genre])
+    .filter((index): index is number => index !== undefined)
+  const genres = multiHotWeighted(genreIndices, context.numGenres, WEIGHTS.genres)
 
-  return vector
+  const decade = oneHotWeighted(context.decadeIndex[movie.decade], context.numDecades, WEIGHTS.decade)
+
+  return tf.concat1d([releaseYear, avgViewerAge, genres, decade])
 }

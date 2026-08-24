@@ -1,30 +1,34 @@
+import * as tf from '@tensorflow/tfjs'
+import type { Movie } from '../types/movie'
 import type { User } from '../types/user'
-import { MAX_AGE, WEIGHTS } from './weights'
+import type { EncodingContext } from './context'
+import { WEIGHTS, normalize } from './weights'
+import { encodeMovie } from './encodeMovie'
 
 /**
- * Encodes a user as the mean of their watched movies' vectors. Users with no
- * watch history get a "neutral" vector carrying only their normalized age.
+ * Encodes a user as the mean of their watched movies' vectors — mirrors
+ * exemplo-01's encodeUser: tf.stack(purchases).mean(0). Users with no watch
+ * history get a neutral vector carrying only their normalized age, same as
+ * exemplo-01's zero-filled fallback for price/category/color.
  */
-export function encodeUser(
-  user: User,
-  movieVectorsById: Map<number, Float32Array>,
-  dim: number
-): Float32Array {
-  const watchedVectors = user.watchedMovieIds
-    .map((id) => movieVectorsById.get(id))
-    .filter((v): v is Float32Array => v !== undefined)
+export function encodeUser(user: User, moviesById: Map<number, Movie>, context: EncodingContext): tf.Tensor2D {
+  const watchedMovies = user.watchedMovieIds
+    .map((id) => moviesById.get(id))
+    .filter((movie): movie is Movie => movie !== undefined)
 
-  const vector = new Float32Array(dim)
-
-  if (watchedVectors.length === 0) {
-    vector[1] = WEIGHTS.avgViewerAge * (Math.min(user.age, MAX_AGE) / MAX_AGE)
-    return vector
+  if (watchedMovies.length > 0) {
+    return tf
+      .stack(watchedMovies.map((movie) => encodeMovie(movie, context)))
+      .mean(0)
+      .reshape([1, context.dimensions]) as tf.Tensor2D
   }
 
-  for (const movieVector of watchedVectors) {
-    for (let i = 0; i < dim; i++) vector[i] += movieVector[i]
-  }
-  for (let i = 0; i < dim; i++) vector[i] /= watchedVectors.length
-
-  return vector
+  return tf
+    .concat1d([
+      tf.zeros([1]), // release year ignored
+      tf.tensor1d([normalize(user.age, context.minAge, context.maxAge) * WEIGHTS.avgViewerAge]),
+      tf.zeros([context.numGenres]), // genres ignored
+      tf.zeros([context.numDecades]), // decade ignored
+    ])
+    .reshape([1, context.dimensions]) as tf.Tensor2D
 }

@@ -1,15 +1,16 @@
 import * as tf from '@tensorflow/tfjs'
-import type { TrainingDataset } from './buildDataset'
 
-export function createModel(inputDim: number): tf.Sequential {
+/** Same architecture as exemplo-01's configureNeuralNetAndTrain: 128 -> 64 -> 32 -> 1. */
+export function createModel(inputDimension: number): tf.Sequential {
   const model = tf.sequential()
-  model.add(tf.layers.dense({ inputShape: [inputDim], units: 128, activation: 'relu' }))
+
+  model.add(tf.layers.dense({ inputShape: [inputDimension], units: 128, activation: 'relu' }))
   model.add(tf.layers.dense({ units: 64, activation: 'relu' }))
   model.add(tf.layers.dense({ units: 32, activation: 'relu' }))
   model.add(tf.layers.dense({ units: 1, activation: 'sigmoid' }))
 
   model.compile({
-    optimizer: tf.train.adam(),
+    optimizer: tf.train.adam(0.01),
     loss: 'binaryCrossentropy',
     metrics: ['accuracy'],
   })
@@ -25,38 +26,31 @@ export interface TrainOptions {
 
 export async function trainModel(
   model: tf.LayersModel,
-  dataset: TrainingDataset,
+  xs: tf.Tensor2D,
+  ys: tf.Tensor2D,
   { epochs, batchSize = 32, onEpochEnd }: TrainOptions
 ): Promise<{ finalLoss: number; finalAccuracy: number }> {
-  const xs = tf.tensor2d(dataset.inputs.map((row) => Array.from(row)))
-  const ys = tf.tensor2d(dataset.labels, [dataset.labels.length, 1])
-
-  try {
-    const history = await model.fit(xs, ys, {
-      epochs,
-      batchSize,
-      shuffle: true,
-      callbacks: {
-        onEpochEnd: (epoch, logs) => {
-          onEpochEnd(epoch, logs?.loss ?? 0, logs?.acc ?? 0)
-        },
+  const history = await model.fit(xs, ys, {
+    epochs,
+    batchSize,
+    shuffle: true,
+    callbacks: {
+      onEpochEnd: (epoch, logs) => {
+        onEpochEnd(epoch, logs?.loss ?? 0, logs?.acc ?? 0)
       },
-    })
+    },
+  })
 
-    const losses = history.history.loss as number[]
-    const accuracies = history.history.acc as number[]
-    return {
-      finalLoss: losses[losses.length - 1] ?? 0,
-      finalAccuracy: accuracies[accuracies.length - 1] ?? 0,
-    }
-  } finally {
-    xs.dispose()
-    ys.dispose()
+  const losses = history.history.loss as number[]
+  const accuracies = history.history.acc as number[]
+  return {
+    finalLoss: losses[losses.length - 1] ?? 0,
+    finalAccuracy: accuracies[accuracies.length - 1] ?? 0,
   }
 }
 
-export function predictBatch(model: tf.LayersModel, inputs: Float32Array[]): number[] {
-  const xs = tf.tensor2d(inputs.map((row) => Array.from(row)))
+export function predictBatch(model: tf.LayersModel, inputs: number[][]): number[] {
+  const xs = tf.tensor2d(inputs)
   try {
     const output = model.predict(xs) as tf.Tensor
     const scores = Array.from(output.dataSync())

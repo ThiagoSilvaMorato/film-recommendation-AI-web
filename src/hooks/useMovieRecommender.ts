@@ -28,7 +28,7 @@ export interface UseMovieRecommender {
   resetModel: () => void
 }
 
-export function useMovieRecommender(movies: Movie[], meta: CatalogMeta | null): UseMovieRecommender {
+export function useMovieRecommender(movies: Movie[], meta: CatalogMeta | null, users: User[]): UseMovieRecommender {
   const workerRef = useRef<Worker | null>(null)
   const requestIdRef = useRef<string | null>(null)
   const predictRequestIdRef = useRef<string | null>(null)
@@ -106,11 +106,11 @@ export function useMovieRecommender(movies: Movie[], meta: CatalogMeta | null): 
 
   useEffect(() => {
     if (!workerReady || !meta || movies.length === 0 || catalogSent) return
-    const request: WorkerRequest = { type: 'CATALOG_LOAD', movies, meta }
+    const request: WorkerRequest = { type: 'CATALOG_LOAD', movies, meta, users }
     workerRef.current?.postMessage(request)
-  }, [workerReady, meta, movies, catalogSent])
+  }, [workerReady, meta, movies, users, catalogSent])
 
-  const train = useCallback((users: User[], epochs = 40) => {
+  const train = useCallback((users: User[], epochs = 100) => {
     if (!workerRef.current) return
     const requestId = crypto.randomUUID()
     requestIdRef.current = requestId

@@ -1,81 +1,84 @@
+import * as tf from '@tensorflow/tfjs'
 import type { Movie } from '../types/movie'
-import type { CatalogMeta } from '../types/catalogMeta'
 import type { User } from '../types/user'
-import { vectorDim } from './weights'
+import type { EncodingContext } from './context'
 import { encodeMovie } from './encodeMovie'
 import { encodeUser } from './encodeUser'
-import { computeAvgViewerAge } from './avgViewerAge'
 
-export interface TrainingDataset {
-  inputs: Float32Array[] // concat(userVector, movieVector) per row
-  labels: number[] // 1 if watched, 0 otherwise
-  inputDim: number
+export interface MovieVectorEntry {
+  id: number
+  vector: Float32Array
 }
 
 /**
- * For every user with a non-empty watch history, builds one (userVector,
- * movieVector) pair for every movie in the catalog, labeled 1 if the user
- * watched it and 0 otherwise.
+ * Precomputes every catalog movie's feature vector once. Mirrors exemplo-01's
+ * context.productVectors, built once per training run in the worker and
+ * reused by both createTrainingData and recommend() instead of re-encoding
+ * the same movie repeatedly.
  */
-export function buildDataset(users: User[], movies: Movie[], meta: CatalogMeta): TrainingDataset {
-  const dim = vectorDim(meta)
-  const { byMovieId, fallback } = computeAvgViewerAge(users)
-
-  const movieVectorsById = new Map<number, Float32Array>()
-  for (const movie of movies) {
-    const avgAge = byMovieId.get(movie.id) ?? fallback
-    movieVectorsById.set(movie.id, encodeMovie(movie, avgAge, meta))
-  }
-
-  const inputs: Float32Array[] = []
-  const labels: number[] = []
-
-  for (const user of users) {
-    if (user.watchedMovieIds.length === 0) continue
-    const userVector = encodeUser(user, movieVectorsById, dim)
-    const watchedSet = new Set(user.watchedMovieIds)
-
-    for (const movie of movies) {
-      const movieVector = movieVectorsById.get(movie.id)!
-      const row = new Float32Array(dim * 2)
-      row.set(userVector, 0)
-      row.set(movieVector, dim)
-      inputs.push(row)
-      labels.push(watchedSet.has(movie.id) ? 1 : 0)
-    }
-  }
-
-  return { inputs, labels, inputDim: dim * 2 }
+export function buildMovieVectors(movies: Movie[], context: EncodingContext): MovieVectorEntry[] {
+  return movies.map((movie) => {
+    const tensor = encodeMovie(movie, context)
+    const vector = tensor.dataSync() as Float32Array
+    tensor.dispose()
+    return { id: movie.id, vector }
+  })
 }
 
-/** Builds movie vectors + a single user's vector, for prediction (no labels needed). */
+export interface TrainingData {
+  xs: tf.Tensor2D
+  ys: tf.Tensor2D
+  inputDimension: number
+}
+
+/**
+ * For every user with watch history, pairs their vector with every catalog
+ * movie's vector, labeling `1` if watched and `0` otherwise. Mirrors
+ * exemplo-01's createTrainingData.
+ */
+export function createTrainingData(
+  users: User[],
+  moviesById: Map<number, Movie>,
+  movieVectors: MovieVectorEntry[],
+  context: EncodingContext
+): TrainingData {
+  const inputs: number[][] = []
+  const labels: number[] = []
+
+  users
+    .filter((user) => user.watchedMovieIds.length > 0)
+    .forEach((user) => {
+      const userTensor = encodeUser(user, moviesById, context)
+      const userVector = userTensor.dataSync()
+      userTensor.dispose()
+
+      const watchedSet = new Set(user.watchedMovieIds)
+      movieVectors.forEach(({ id, vector }) => {
+        inputs.push([...userVector, ...vector])
+        labels.push(watchedSet.has(id) ? 1 : 0)
+      })
+    })
+
+  return {
+    xs: tf.tensor2d(inputs),
+    ys: tf.tensor2d(labels, [labels.length, 1]),
+    inputDimension: context.dimensions * 2,
+  }
+}
+
+/** Pairs one user's vector with every catalog movie's vector, for prediction. */
 export function buildPredictionInputs(
   user: User,
-  movies: Movie[],
-  users: User[],
-  meta: CatalogMeta
-): { movieIds: number[]; inputs: Float32Array[]; inputDim: number } {
-  const dim = vectorDim(meta)
-  const { byMovieId, fallback } = computeAvgViewerAge(users)
+  moviesById: Map<number, Movie>,
+  movieVectors: MovieVectorEntry[],
+  context: EncodingContext
+): { movieIds: number[]; inputs: number[][] } {
+  const userTensor = encodeUser(user, moviesById, context)
+  const userVector = userTensor.dataSync()
+  userTensor.dispose()
 
-  const movieVectorsById = new Map<number, Float32Array>()
-  for (const movie of movies) {
-    const avgAge = byMovieId.get(movie.id) ?? fallback
-    movieVectorsById.set(movie.id, encodeMovie(movie, avgAge, meta))
-  }
+  const movieIds = movieVectors.map(({ id }) => id)
+  const inputs = movieVectors.map(({ vector }) => [...userVector, ...vector])
 
-  const userVector = encodeUser(user, movieVectorsById, dim)
-
-  const movieIds: number[] = []
-  const inputs: Float32Array[] = []
-  for (const movie of movies) {
-    const movieVector = movieVectorsById.get(movie.id)!
-    const row = new Float32Array(dim * 2)
-    row.set(userVector, 0)
-    row.set(movieVector, dim)
-    movieIds.push(movie.id)
-    inputs.push(row)
-  }
-
-  return { movieIds, inputs, inputDim: dim * 2 }
+  return { movieIds, inputs }
 }

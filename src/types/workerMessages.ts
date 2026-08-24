@@ -9,7 +9,7 @@ export interface RecommendationResult {
 
 /** Main thread -> Worker */
 export type WorkerRequest =
-  | { type: 'CATALOG_LOAD'; movies: Movie[]; meta: CatalogMeta }
+  | { type: 'CATALOG_LOAD'; movies: Movie[]; meta: CatalogMeta; users: User[] }
   | { type: 'TRAIN_REQUEST'; requestId: string; users: User[]; epochs: number; batchSize?: number }
   | { type: 'PREDICT_REQUEST'; requestId: string; users: User[]; targetUserId: string; topN?: number }
   | { type: 'RESET_MODEL_REQUEST'; requestId: string }

@@ -2,8 +2,8 @@ import * as tf from '@tensorflow/tfjs'
 import type { Movie } from '../types/movie'
 import type { CatalogMeta } from '../types/catalogMeta'
 import type { WorkerRequest, WorkerResponse } from '../types/workerMessages'
-import { vectorDim } from '../ml/weights'
-import { buildDataset, buildPredictionInputs } from '../ml/buildDataset'
+import { buildEncodingContext, type EncodingContext } from '../ml/context'
+import { buildMovieVectors, buildPredictionInputs, createTrainingData, type MovieVectorEntry } from '../ml/buildDataset'
 import { createModel, predictBatch, trainModel } from '../ml/model'
 import { clearModel, isModelShapeCompatible, loadModel, saveModel } from '../ml/modelStorage'
 
@@ -11,7 +11,17 @@ const ctx = self as unknown as Worker
 
 let movies: Movie[] = []
 let meta: CatalogMeta | null = null
+let moviesById = new Map<number, Movie>()
 let model: tf.LayersModel | null = null
+
+// Encoding context + precomputed movie vectors from the LAST completed
+// training run — mirrors exemplo-01's _globalCtx. Predictions reuse this
+// instead of rebuilding it from live data, since the model's weights were
+// fit against vectors on this specific normalization scale (age range,
+// avg-viewer-age per movie). Primed once at catalog load so a model
+// restored from IndexedDB can serve predictions before any retraining.
+let context: EncodingContext | null = null
+let movieVectors: MovieVectorEntry[] = []
 
 function post(response: WorkerResponse): void {
   ctx.postMessage(response)
@@ -26,8 +36,12 @@ async function boot(): Promise<void> {
 function handleCatalogLoad(request: Extract<WorkerRequest, { type: 'CATALOG_LOAD' }>): void {
   movies = request.movies
   meta = request.meta
+  moviesById = new Map(movies.map((movie) => [movie.id, movie]))
 
-  if (model && !isModelShapeCompatible(model, vectorDim(meta) * 2)) {
+  context = buildEncodingContext(movies, meta, request.users)
+  movieVectors = buildMovieVectors(movies, context)
+
+  if (model && !isModelShapeCompatible(model, context.dimensions * 2)) {
     console.warn('Restored model input shape does not match current catalog encoding; discarding it.')
     model.dispose()
     model = null
@@ -42,17 +56,26 @@ async function handleTrain(request: Extract<WorkerRequest, { type: 'TRAIN_REQUES
     return
   }
 
+  let xs: tf.Tensor2D | null = null
+  let ys: tf.Tensor2D | null = null
+
   try {
-    const dataset = buildDataset(request.users, movies, meta)
-    if (dataset.inputs.length === 0) {
+    context = buildEncodingContext(movies, meta, request.users)
+    movieVectors = buildMovieVectors(movies, context)
+
+    const dataset = createTrainingData(request.users, moviesById, movieVectors, context)
+    xs = dataset.xs
+    ys = dataset.ys
+
+    if (dataset.ys.shape[0] === 0) {
       throw new Error('No users with watch history to train on')
     }
 
     model?.dispose()
-    model = createModel(dataset.inputDim)
+    model = createModel(dataset.inputDimension)
 
     const start = performance.now()
-    const { finalLoss, finalAccuracy } = await trainModel(model, dataset, {
+    const { finalLoss, finalAccuracy } = await trainModel(model, xs, ys, {
       epochs: request.epochs,
       batchSize: request.batchSize,
       onEpochEnd: (epoch, loss, accuracy) => {
@@ -82,15 +105,14 @@ async function handleTrain(request: Extract<WorkerRequest, { type: 'TRAIN_REQUES
       requestId: request.requestId,
       message: err instanceof Error ? err.message : 'Training failed',
     })
+  } finally {
+    xs?.dispose()
+    ys?.dispose()
   }
 }
 
 function handlePredict(request: Extract<WorkerRequest, { type: 'PREDICT_REQUEST' }>): void {
-  if (!meta) {
-    post({ type: 'PREDICT_ERROR', requestId: request.requestId, message: 'Catalog not loaded yet' })
-    return
-  }
-  if (!model) {
+  if (!model || !context) {
     post({ type: 'PREDICT_ERROR', requestId: request.requestId, message: 'No trained model available yet' })
     return
   }
@@ -99,7 +121,7 @@ function handlePredict(request: Extract<WorkerRequest, { type: 'PREDICT_REQUEST'
     const targetUser = request.users.find((u) => u.id === request.targetUserId)
     if (!targetUser) throw new Error('Target user not found')
 
-    const { movieIds, inputs } = buildPredictionInputs(targetUser, movies, request.users, meta)
+    const { movieIds, inputs } = buildPredictionInputs(targetUser, moviesById, movieVectors, context)
     const scores = predictBatch(model, inputs)
 
     const ranked = movieIds

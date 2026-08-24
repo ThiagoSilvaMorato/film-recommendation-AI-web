@@ -8,7 +8,7 @@ export function UserCreateForm({ onCreate }: UserCreateFormProps) {
   const [name, setName] = useState("");
   const [age, setAge] = useState("");
 
-  function handleSubmit(e: SubmitEvent) {
+  function handleSubmit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     const parsedAge = Number(age);
     if (!name.trim() || !parsedAge || parsedAge <= 0) return;

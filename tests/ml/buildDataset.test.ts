@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildDataset, buildPredictionInputs } from '../../src/ml/buildDataset'
-import { vectorDim } from '../../src/ml/weights'
+import { buildMovieVectors, buildPredictionInputs, createTrainingData } from '../../src/ml/buildDataset'
+import { buildEncodingContext } from '../../src/ml/context'
 import type { CatalogMeta } from '../../src/types/catalogMeta'
 import type { Movie } from '../../src/types/movie'
 import type { User } from '../../src/types/user'
@@ -26,30 +26,40 @@ const users: User[] = [
   { id: 'u2', name: 'Bob', age: 40, watchedMovieIds: [], createdAt: new Date().toISOString() },
 ]
 
-describe('buildDataset', () => {
+const moviesById = new Map(movies.map((m) => [m.id, m]))
+
+describe('createTrainingData', () => {
   it('creates one row per (user with history) x (catalog movie)', () => {
-    const dataset = buildDataset(users, movies, meta)
+    const context = buildEncodingContext(movies, meta, users)
+    const movieVectors = buildMovieVectors(movies, context)
+    const dataset = createTrainingData(users, moviesById, movieVectors, context)
     // only u1 has a non-empty history -> 1 user x 3 movies = 3 rows
-    expect(dataset.inputs.length).toBe(3)
-    expect(dataset.labels.length).toBe(3)
+    expect(dataset.ys.shape[0]).toBe(3)
   })
 
   it('labels watched movies as 1 and others as 0', () => {
-    const dataset = buildDataset(users, movies, meta)
-    expect(dataset.labels).toEqual([1, 0, 1])
+    const context = buildEncodingContext(movies, meta, users)
+    const movieVectors = buildMovieVectors(movies, context)
+    const dataset = createTrainingData(users, moviesById, movieVectors, context)
+    expect(Array.from(dataset.ys.dataSync())).toEqual([1, 0, 1])
   })
 
   it('input dim is twice the movie vector dim', () => {
-    const dataset = buildDataset(users, movies, meta)
-    expect(dataset.inputDim).toBe(vectorDim(meta) * 2)
+    const context = buildEncodingContext(movies, meta, users)
+    const movieVectors = buildMovieVectors(movies, context)
+    const dataset = createTrainingData(users, moviesById, movieVectors, context)
+    expect(dataset.inputDimension).toBe(context.dimensions * 2)
+    expect(dataset.xs.shape[1]).toBe(context.dimensions * 2)
   })
 })
 
 describe('buildPredictionInputs', () => {
   it('creates one row per catalog movie for the target user', () => {
-    const { movieIds, inputs, inputDim } = buildPredictionInputs(users[0], movies, users, meta)
+    const context = buildEncodingContext(movies, meta, users)
+    const movieVectors = buildMovieVectors(movies, context)
+    const { movieIds, inputs } = buildPredictionInputs(users[0], moviesById, movieVectors, context)
     expect(movieIds).toEqual([1, 2, 3])
     expect(inputs.length).toBe(3)
-    expect(inputDim).toBe(vectorDim(meta) * 2)
+    expect(inputs[0].length).toBe(context.dimensions * 2)
   })
 })

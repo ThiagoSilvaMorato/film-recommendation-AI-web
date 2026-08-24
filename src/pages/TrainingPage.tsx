@@ -3,6 +3,9 @@ import { TrainingChart } from '../components/training/TrainingChart'
 import { TrainingControls } from '../components/training/TrainingControls'
 import { ErrorBanner } from '../components/common/ErrorBanner'
 
+/** Matches exemplo-01's configureNeuralNetAndTrain, which trains for 100 epochs. */
+const EPOCHS = 100
+
 export function TrainingPage() {
   const { users, workerReady, modelRestored, trainingStatus, trainingHistory, trainingError, train, resetModel } =
     useAppContext()
@@ -27,8 +30,8 @@ export function TrainingPage() {
         status={trainingStatus}
         modelRestored={modelRestored}
         epoch={lastProgress?.epoch ?? 0}
-        totalEpochs={lastProgress?.totalEpochs ?? 40}
-        onTrain={() => train(users, 40)}
+        totalEpochs={lastProgress?.totalEpochs ?? EPOCHS}
+        onTrain={() => train(users, EPOCHS)}
         onReset={resetModel}
       />
 

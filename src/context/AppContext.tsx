@@ -75,7 +75,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [users, currentUserId]
   )
 
-  const recommender = useMovieRecommender(movies, catalogMeta)
+  const recommender = useMovieRecommender(movies, catalogMeta, users)
 
   const value: AppContextValue = {
     movies,

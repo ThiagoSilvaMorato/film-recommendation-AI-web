@@ -23,29 +23,45 @@ Built with React + TypeScript + Vite + Tailwind CSS.
 
 This is a **content-based** recommender: instead of "users who liked X also
 liked Y," it learns to predict compatibility between a user's taste profile
-and a movie's features.
+and a movie's features. The encoding/training/recommend logic in `src/ml/`
+and `src/worker/recommender.worker.ts` closely follows a companion study
+project (an e-commerce product recommender built the same way, with
+`price`/`age`/`category`/`color` in place of `releaseYear`/`avgViewerAge`/
+`genres`/`decade`) — same weighting philosophy, same layer sizes, same
+`tf.js` API calls (`tf.oneHot`, `tf.stack().mean(0)`, `tf.concat1d`), so the
+two are easy to read side by side.
 
 **Encoding.** Each movie is turned into a numeric vector with four weighted
-parts, concatenated:
+parts, concatenated (weights mirror the reference project's
+category(0.4)/color(0.3)/price(0.2)/age(0.1) split):
 
-- Release year, normalized against the catalog's min/max.
-- Average age of the mock users who've watched that movie (recomputed live
-  from the current user list — not stored in the dataset — falling back to
-  the overall average user age for unwatched movies).
-- Genres, as a multi-hot vector (a movie can have several genres; each
-  active genre's weight is divided by the movie's genre count so movies
-  don't get more "genre mass" just for having more tags).
-- Decade of release, one-hot.
+- Genres, as a multi-hot vector, weight **0.4** (a movie can have several
+  genres, unlike the reference's single category; each active genre's
+  weight is divided by the movie's genre count so movies don't get more
+  "genre mass" just for having more tags).
+- Decade of release, one-hot, weight **0.3**.
+- Release year, normalized against the catalog's min/max, weight **0.2**.
+- Average age of the mock users who've watched that movie, normalized
+  against the current min/max user age, weight **0.1** (computed fresh from
+  the live user roster at training time — not stored in the dataset —
+  falling back to the midpoint age, which always normalizes to exactly 0.5,
+  for unwatched movies).
 
 A **user's vector** is the average of the vectors of the movies they've
-watched (or, for a brand-new user, a neutral vector carrying only their age).
+watched (or, for a brand-new user, a neutral vector carrying only their
+normalized age). The encoding context (age range, per-movie average-age
+norms, genre/decade index maps) is rebuilt fresh from the live user roster
+every time the model is (re)trained, and reused as-is for every prediction
+against that model — mixing a stale context with a freshly trained model
+would put vectors on the wrong numeric scale.
 
 **Training.** For every mock user with watch history, the app pairs their
 vector with the vector of *every* movie in the local catalog, labeling each
 pair `1` if they watched it and `0` otherwise. A `tf.sequential()` model
 (dense layers 128 → 64 → 32 → 1, ReLU hidden / sigmoid output,
-`binaryCrossentropy` loss, Adam optimizer) trains on these pairs, reporting
-loss/accuracy per epoch back to the UI via `postMessage`.
+`binaryCrossentropy` loss, Adam optimizer at learning rate 0.01, 100 epochs)
+trains on these pairs, reporting loss/accuracy per epoch back to the UI via
+`postMessage`.
 
 **Recommending.** For the selected user, the app pairs their vector with
 every catalog movie, runs a batch `model.predict`, and sorts by predicted

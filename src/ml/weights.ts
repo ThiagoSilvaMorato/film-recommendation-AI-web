@@ -1,15 +1,27 @@
 import type { CatalogMeta } from '../types/catalogMeta'
 
-/** Fixed normalization ceiling for ages — stable across catalog resamples. */
-export const MAX_AGE = 100
-
-/** Per-block scaling applied before concatenating the movie feature vector. */
+/**
+ * Mirrors exemplo-01's WEIGHTS: primary categorical > secondary categorical
+ * > primary continuous > secondary continuous.
+ *   category(0.4) -> genres(0.4)
+ *   color(0.3)    -> decade(0.3)
+ *   price(0.2)    -> releaseYear(0.2)
+ *   age(0.1)      -> avgViewerAge(0.1)
+ */
 export const WEIGHTS = {
-  releaseYear: 1.0,
-  avgViewerAge: 1.0,
-  genres: 1.5,
-  decade: 0.5,
+  genres: 0.4,
+  decade: 0.3,
+  releaseYear: 0.2,
+  avgViewerAge: 0.1,
 } as const
+
+/**
+ * Normalize a continuous value to 0-1. Same formula as exemplo-01:
+ * (val - min) / (max - min), guarding against a zero-width range.
+ */
+export function normalize(value: number, min: number, max: number): number {
+  return (value - min) / (max - min || 1)
+}
 
 /** Movie vector dimension: releaseYear(1) + avgViewerAge(1) + genres(G) + decade(D). */
 export function vectorDim(meta: CatalogMeta): number {
