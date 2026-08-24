@@ -14,12 +14,7 @@ let meta: CatalogMeta | null = null
 let moviesById = new Map<number, Movie>()
 let model: tf.LayersModel | null = null
 
-// Encoding context + precomputed movie vectors from the LAST completed
-// training run — mirrors exemplo-01's _globalCtx. Predictions reuse this
-// instead of rebuilding it from live data, since the model's weights were
-// fit against vectors on this specific normalization scale (age range,
-// avg-viewer-age per movie). Primed once at catalog load so a model
-// restored from IndexedDB can serve predictions before any retraining.
+// context/movieVectors from the last training run; predictions reuse them, never rebuild
 let context: EncodingContext | null = null
 let movieVectors: MovieVectorEntry[] = []
 

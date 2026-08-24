@@ -3,7 +3,6 @@ import { TrainingChart } from '../components/training/TrainingChart'
 import { TrainingControls } from '../components/training/TrainingControls'
 import { ErrorBanner } from '../components/common/ErrorBanner'
 
-/** Matches exemplo-01's configureNeuralNetAndTrain, which trains for 100 epochs. */
 const EPOCHS = 100
 
 export function TrainingPage() {

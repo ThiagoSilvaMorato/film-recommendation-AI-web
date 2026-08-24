@@ -1,6 +1,5 @@
 import * as tf from '@tensorflow/tfjs'
 
-/** Same architecture as exemplo-01's configureNeuralNetAndTrain: 128 -> 64 -> 32 -> 1. */
 export function createModel(inputDimension: number): tf.Sequential {
   const model = tf.sequential()
 

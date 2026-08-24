@@ -45,7 +45,6 @@ describe('encodeMovie', () => {
   })
 
   it('uses the movie\'s normalized avg viewer age', () => {
-    // both watchers of movie 1 average to age 30, normalized against [20,40] -> 0.5
     const context = buildEncodingContext([movie], meta, users)
     const vector = Array.from(encodeMovie(movie, context).dataSync())
     expect(vector[1]).toBeCloseTo(WEIGHTS.avgViewerAge * 0.5)

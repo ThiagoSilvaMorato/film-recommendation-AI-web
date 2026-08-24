@@ -1,15 +1,4 @@
-/**
- * One-time preprocessing script: downloads the public meilisearch movies
- * dataset, filters + deterministically samples it down to a small local
- * catalog, and writes public/data/movies.json + public/data/catalogMeta.json.
- *
- * The app never fetches the raw dataset at runtime — only these two
- * generated files. Re-run this script (with different flags) any time you
- * want to regenerate the sample; see README for usage.
- *
- * Usage:
- *   npx tsx scripts/prepareMovies.ts [--seed 42] [--size 500] [--minYear 1950] [--refresh]
- */
+// npx tsx scripts/prepareMovies.ts [--seed 42] [--size 500] [--minYear 1950] [--refresh]
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'

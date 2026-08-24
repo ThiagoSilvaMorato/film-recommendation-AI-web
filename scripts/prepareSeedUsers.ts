@@ -1,12 +1,4 @@
-/**
- * One-time generation script: reads public/data/movies.json and builds a
- * roster of mock users with genre-coherent (but not 100% pure) watch
- * histories, writing the result to data/seedUsers.json. Must be run AFTER
- * prepareMovies.ts, since it samples real ids from the generated catalog.
- *
- * Usage:
- *   npx tsx scripts/prepareSeedUsers.ts [--seed 7]
- */
+// Run after prepareMovies.ts. npx tsx scripts/prepareSeedUsers.ts [--seed 7]
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
@@ -24,7 +16,7 @@ interface Persona {
   age: number
   primaryGenres: string[]
   watchCount: number
-  noiseRatio: number // fraction of watch history picked from outside primaryGenres
+  noiseRatio: number
 }
 
 const PERSONAS: Persona[] = [

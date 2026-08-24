@@ -1,4 +1,3 @@
-/** mulberry32 PRNG — deterministic, fast, good enough for sampling/shuffling. */
 export function mulberry32(seed: number): () => number {
   let state = seed >>> 0
   return () => {
@@ -10,7 +9,6 @@ export function mulberry32(seed: number): () => number {
   }
 }
 
-/** Deterministic Fisher-Yates shuffle using the given PRNG. Returns a new array. */
 export function seededShuffle<T>(items: readonly T[], random: () => number): T[] {
   const result = items.slice()
   for (let i = result.length - 1; i > 0; i--) {

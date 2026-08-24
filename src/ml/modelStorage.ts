@@ -17,12 +17,9 @@ export async function loadModel(): Promise<tf.LayersModel | null> {
 export async function clearModel(): Promise<void> {
   try {
     await tf.io.removeModel(MODEL_KEY)
-  } catch {
-    // nothing to remove
-  }
+  } catch {}
 }
 
-/** True if the restored model's input shape matches the current encoding's expected dim. */
 export function isModelShapeCompatible(model: tf.LayersModel, expectedInputDim: number): boolean {
   const shape = model.inputs[0]?.shape
   const actualDim = shape?.[shape.length - 1]

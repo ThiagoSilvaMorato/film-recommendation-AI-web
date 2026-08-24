@@ -33,7 +33,6 @@ describe('createTrainingData', () => {
     const context = buildEncodingContext(movies, meta, users)
     const movieVectors = buildMovieVectors(movies, context)
     const dataset = createTrainingData(users, moviesById, movieVectors, context)
-    // only u1 has a non-empty history -> 1 user x 3 movies = 3 rows
     expect(dataset.ys.shape[0]).toBe(3)
   })
 

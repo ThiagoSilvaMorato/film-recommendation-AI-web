@@ -48,7 +48,6 @@ describe('buildEncodingContext', () => {
       meta,
       [user({ age: 20, watchedMovieIds: [1] }), user({ age: 40, watchedMovieIds: [1] })]
     )
-    // avg age for movie 1 is 30, normalized against [20,40] -> 0.5
     expect(context.movieAvgAgeNorm.get(1)).toBeCloseTo(0.5)
   })
 

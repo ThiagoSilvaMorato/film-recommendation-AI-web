@@ -10,12 +10,6 @@ export interface MovieVectorEntry {
   vector: Float32Array
 }
 
-/**
- * Precomputes every catalog movie's feature vector once. Mirrors exemplo-01's
- * context.productVectors, built once per training run in the worker and
- * reused by both createTrainingData and recommend() instead of re-encoding
- * the same movie repeatedly.
- */
 export function buildMovieVectors(movies: Movie[], context: EncodingContext): MovieVectorEntry[] {
   return movies.map((movie) => {
     const tensor = encodeMovie(movie, context)
@@ -31,11 +25,6 @@ export interface TrainingData {
   inputDimension: number
 }
 
-/**
- * For every user with watch history, pairs their vector with every catalog
- * movie's vector, labeling `1` if watched and `0` otherwise. Mirrors
- * exemplo-01's createTrainingData.
- */
 export function createTrainingData(
   users: User[],
   moviesById: Map<number, Movie>,
@@ -66,7 +55,6 @@ export function createTrainingData(
   }
 }
 
-/** Pairs one user's vector with every catalog movie's vector, for prediction. */
 export function buildPredictionInputs(
   user: User,
   moviesById: Map<number, Movie>,
